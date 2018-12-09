@@ -46,3 +46,13 @@ test ${RETVAL1} -ne 0 -o ${RETVAL2} -ne 0 && {
     echo "${a} > ${b}"
     exit 0
 }
+
+#if [[ ${a} -lt ${b} ]]
+#then
+#    echo "${a} is less than ${b}"
+#elif [[ ${a} -gt ${b} ]]
+#then
+#    echo "${a} is greater than ${b}"
+#else
+#    echo "${a} is equal to ${b}"
+#fi

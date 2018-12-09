@@ -14,25 +14,46 @@
 #echo "2. [install lnmp]"
 #echo "3. [exit]"
 
+E_NOTNUM=85
+
+menu() {
 cat << EOF
     1. [install lamp]
     2. [install lnmp]
     3. [exit]
+    Plz input the num you want:
 EOF
+}
 
-read -p "Plz input the num you want: " num
+menu
+
+read -t 15 num
+
+[ ${num} -ne 1 -o ${num} -ne 2 -o ${num} -ne 3 ] && {
+    echo "Plz input the num you want again"
+    exit ${E_NOTNUM}
+}
 
 [[ num -eq 1 ]] && {
     echo "installing lamp"
+    sleep 3
+    echo "lamp is installed"
     exit 0
 }
 
 [[ num -eq 2 ]] && {
     echo "installing lnmp"
+    sleep 3
+    echo "lnmp is installed"
     exit 0
 }
 
 [[ num -eq 3 ]] && {
-    echo "exiting"
+    echo "exit"
     exit 0
 }
+
+#[ ${num} -ne 1 -o ${num} -ne 2 -o ${num} -ne 3 ] && {
+#    echo "Plz input the num you want again"
+#    exit ${E_NOTNUM}
+#}
