@@ -13,9 +13,11 @@ LOGDIR=$6  # /opt/logs
 BAKDIR=$7   # /opt/backup
 SERVER_PORT=$8 # 22991
 BINDIR=${APPDIR}/${APPNAME}/bin
-CONF_DIR=${APPDIR}/${APPNAME}/conf
+#CONF_DIR=${APPDIR}/${APPNAME}/conf
+DEPLOY_DIR=${APPDIR}/${APPNAME}
 PARAMNUM=$#
 SCRIPTNAME=$0
+
 
 
 # usage function
@@ -30,7 +32,7 @@ function usage() {
 # start function
 function start() {
 
-    PIDS=`ps -ef | grep java | grep "$CONF_DIR" |awk '{print $2}'`
+    PIDS=`ps -ef | grep java | grep "${DEPLOY_DIR}" |awk '{print $2}'`
 
     # 判断应用是否已经启动
     if [[ -n "$PIDS" ]]; then
@@ -46,9 +48,8 @@ function start() {
         return 2
     fi
 
-
     echo -e "Starting the ${APPNAME} ...\c"
-    bash ${BINDIR}/start.sh
+    source /etc/profile && cd ${BINDIR} && bash ${BINDIR}/start.sh
 
     # 判断应用是否启动成功
     COUNT=0
@@ -58,7 +59,7 @@ function start() {
         if [[ -n "${SERVER_PORT}" ]]; then
             COUNT=`netstat -ant | grep ${SERVER_PORT} | wc -l`
         else
-            COUNT=`ps -f | grep java | grep "${CONF_DIR}" | awk '{print $2}' | wc -l`
+            COUNT=`ps -f | grep java | grep "${DEPLOY_DIR}" | awk '{print $2}' | wc -l`
         fi
         if [[ ${COUNT} -gt 0 ]]; then
             break
@@ -66,7 +67,7 @@ function start() {
     done
 
     echo "OK!"
-    PIDS=`ps -f | grep java | grep "${CONF_DIR}" | awk '{print $2}'`
+    PIDS=`ps -f | grep java | grep "${DEPLOY_DIR}" | awk '{print $2}'`
     echo "Start ${APPNAME} Success, PID: $PIDS"
 
 }
@@ -75,7 +76,7 @@ function start() {
 # stop function
 function stop() {
 
-    PIDS=`ps -ef | grep java | grep "$CONF_DIR" |awk '{print $2}'`
+    PIDS=`ps -ef | grep java | grep "${DEPLOY_DIR}" |awk '{print $2}'`
 
     # 判断应用是否已经停止
     if [[ -z "$PIDS" ]]; then
@@ -88,20 +89,21 @@ function stop() {
         kill ${PID} > /dev/null 2>&1
     done
 
-    # 判断应用是否停止成功
+    # 判断应用是否停止成功，等待时间15s
     COUNT=0
-    while [[ ${COUNT} -lt 1 ]]; do
+    while [[ ${COUNT} -lt 15 ]]; do
         echo -e ".\c"
         sleep 1
-        COUNT=1
-        for PID in ${PIDS} ; do
-            PID_EXIST=`ps -f -p ${PID} | grep java`
-            if [[ -n "${PID_EXIST}" ]]; then
-                COUNT=0
-                break
-            fi
-        done
+        COUNT=$[${COUNT}+1]
     done
+
+    # 禁止进程超过15s，直接kill -9
+    PIDS_EXIST=`ps -ef | grep java | grep "${DEPLOY_DIR}" |awk '{print $2}'`
+    if [[ -n "${PIDS_EXIST}" ]]; then
+        for PID in ${PIDS_EXIST} ; do
+            kill -9 ${PID} > /dev/null 2>&1
+        done
+    fi
 
     echo "OK!"
     echo "Stop ${APPNAME} Success, PID: $PIDS"
@@ -113,7 +115,15 @@ function stop() {
 function backup() {
 	cd ${APPDIR}
 	[[ ! -d ${APPNAME} ]] && return 2
-	mv -r ${APPNAME} ${BAKDIR}/${APPNAME}_`date +%F_%T`
+
+	# 判断是否是 tomcat 应用
+	if echo "${APPNAME}" | grep tomcat ; then
+	    mv ${APPNAME}/webapps ${BAKDIR}/${APPNAME}_webapps_`date +%F_%T`
+	else
+	    mv ${APPNAME} ${BAKDIR}/${APPNAME}_`date +%F_%T`
+	fi
+
+	# 判断是否备份成功
 	if [[ $? -eq 0 ]]; then
 	    echo "Backup ${APPNAME} success!"
 	else
@@ -125,23 +135,72 @@ function backup() {
 
 # deploy function
 function deploy() {
+
     cd ${APPDIR}
 	tar xf ${TARSOURCE}/${APPNAME}${TARSUFFIX} -C ${APPDIR}
-	[[ ! -d ${LOGDIR}/${APPNAME} ]] && mkdir -p ${LOGDIR}/${APPNAME}
-	[[ -d ${APPNAME}/logs ]] && mv ${APPNAME}/logs/* ${LOGDIR}/${APPNAME} && rmdir ${APPNAME}/logs
-	[[ ! -L ${APPNAME}/logs ]] && ln -s ${LOGDIR}/${APPNAME} ${APPDIR}/${APPNAME}/logs
+
+	# 判断是否是 tomcat 应用，修改启动脚本start.sh
+	if echo "${APPNAME}" | grep tomcat ; then
+	    sed -i 's#sh ./startup.sh#nohup sh ./startup.sh \&#g' ${DEPLOY_DIR}/bin/start.sh
+	fi
+
+#	[[ ! -d ${LOGDIR}/${APPNAME} ]] && mkdir -p ${LOGDIR}/${APPNAME}
+#	[[ -d ${APPNAME}/logs ]] && mv ${APPNAME}/logs/* ${LOGDIR}/${APPNAME} && rmdir ${APPNAME}/logs
+#	[[ ! -L ${APPNAME}/logs ]] && ln -s ${LOGDIR}/${APPNAME} ${APPDIR}/${APPNAME}/logs
+
+	if [[ ! -d ${LOGDIR}/${APPNAME} ]]; then
+	    mkdir -p ${LOGDIR}/${APPNAME}
+	fi
+
+    if [[ ! -L ${APPNAME}/logs ]]; then
+        if [[ -d ${APPNAME}/logs ]]; then
+            mv ${APPNAME}/logs/* ${LOGDIR}/${APPNAME}
+            rmdir ${APPNAME}/logs
+        fi
+        ln -s ${LOGDIR}/${APPNAME} ${APPDIR}/${APPNAME}/logs
+    else
+        echo "日志文件夹已经是软链接"
+    fi
+
+
 	echo "Deploy ${APPNAME} success!"
+
+
+
 }
 
 
 # rollback function
 function rollback() {
 	cd ${APPDIR}
-	[[ -d ${APPNAME} ]] && rm -fr ${APPNAME}
-	mv -r ${BAKDIR}/`ls -rht ${BAKDIR}|grep ${APPNAME}|tail -1` ${APPNAME}
-	[[ ! -d ${LOGDIR}/${APPNAME} ]] && mkdir -p ${LOGDIR}/${APPNAME}
-	[[ -d ${APPNAME}/logs ]] && mv ${APPNAME}/logs/* ${LOGDIR}/${APPNAME} && rmdir ${APPNAME}/logs
-	[[ ! -L ${APPNAME}/logs ]] && ln -s ${LOGDIR}/${APPNAME} ${APPDIR}/${APPNAME}/logs
+
+	# 判断是否是 tomcat 应用
+	if echo "${APPNAME}" | grep tomcat ; then
+	    [[ -d ${APPNAME}/webapps ]] && rm -fr ${APPNAME}/webapps
+	    mv ${BAKDIR}/`ls -rht ${BAKDIR}|grep ${APPNAME}|tail -1` ${APPNAME}/webapps
+	else
+        [[ -d ${APPNAME} ]] && rm -fr ${APPNAME}
+        mv ${BAKDIR}/`ls -rht ${BAKDIR}|grep ${APPNAME}|tail -1` ${APPNAME}
+	fi
+
+#	[[ ! -d ${LOGDIR}/${APPNAME} ]] && mkdir -p ${LOGDIR}/${APPNAME}
+#	[[ -d ${APPNAME}/logs ]] && mv ${APPNAME}/logs/* ${LOGDIR}/${APPNAME} && rmdir ${APPNAME}/logs
+#	[[ ! -L ${APPNAME}/logs ]] && ln -s ${LOGDIR}/${APPNAME} ${APPDIR}/${APPNAME}/logs
+
+	if [[ ! -d ${LOGDIR}/${APPNAME} ]]; then
+	    mkdir -p ${LOGDIR}/${APPNAME}
+	fi
+
+    if [[ ! -L ${APPNAME}/logs ]]; then
+        if [[ -d ${APPNAME}/logs ]]; then
+            mv ${APPNAME}/logs/* ${LOGDIR}/${APPNAME}
+            rmdir ${APPNAME}/logs
+        fi
+        ln -s ${LOGDIR}/${APPNAME} ${APPDIR}/${APPNAME}/logs
+    else
+        echo "日志文件夹已经是软链接"
+    fi
+
 	echo "Rollback ${APPNAME} success!"
 }
 
