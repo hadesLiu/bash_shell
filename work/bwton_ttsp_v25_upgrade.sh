@@ -21,10 +21,17 @@ SCRIPTNAME=$0  # 脚本名称
 
 # usage function
 function usage() {
-    [[ ${PARAMNUM} -ne 8 ]] && {
-        echo "usage: $0 start|stop|restart|publish|rollback APPDIR APPNAME TARSOURCE TARSUFFIX LOGDIR BAKDIR SERVER_PORT"
-        exit 1
-    }
+    if [[ -n ${SERVER_PORT} ]]; then
+        [[ ${PARAMNUM} -ne 8 ]] && {
+            echo "usage: $0 start|stop|restart|publish|rollback APPDIR APPNAME TARSOURCE TARSUFFIX LOGDIR BAKDIR SERVER_PORT"
+            exit 11
+        }
+    else
+        [[ ${PARAMNUM} -ne 7 ]] && {
+            echo "usage: $0 start|stop|restart|publish|rollback APPDIR APPNAME TARSOURCE TARSUFFIX LOGDIR BAKDIR"
+            exit 22
+        }
+    fi
 }
 
 
@@ -41,10 +48,12 @@ function start() {
     fi
 
     # 判断应用端口是否被占用
-    SERVER_PORT_COUNT=`netstat -tln | grep ${SERVER_PORT} | wc -l`
-    if [[ ${SERVER_PORT_COUNT} -gt 0 ]]; then
-        echo "ERROR: The ${APPNAME} port ${SERVER_PORT} already used!"
-        return 2
+    if [[ -n ${SERVER_PORT} ]]; then
+        SERVER_PORT_COUNT=`netstat -tln | grep ${SERVER_PORT} | wc -l`
+        if [[ ${SERVER_PORT_COUNT} -gt 0 ]]; then
+            echo "ERROR: The ${APPNAME} port ${SERVER_PORT} already used!"
+            return 2
+        fi
     fi
 
     # 执行启动脚本
