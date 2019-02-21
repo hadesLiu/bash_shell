@@ -76,9 +76,10 @@ function start() {
             break
         fi
 
+        # 判断启动30s后，端口或进程不存在，表示启动失败
         flag=$[${flag}+1]
         if [[ ${flag} -gt 30 ]] && [[ ${COUNT} -eq 0 ]]; then
-            echo -e "\033[31;1m应用启动失败\033[0m"
+            echo "应用启动失败"
             exit 33
         fi
     done
