@@ -61,7 +61,8 @@ function start() {
     source /etc/profile && cd ${BINDIR} && bash ${BINDIR}/start.sh
 
     # 判断应用是否启动成功
-    COUNT=0
+    COUNT=0  # 计算java 进程个数
+    flag=0   # 计算启动时间秒数
     while [[ ${COUNT} -lt 1 ]]; do
         echo -e ".\c"  # 等同于 echo -n "."
         sleep 1
@@ -70,8 +71,15 @@ function start() {
         else
             COUNT=`ps -f | grep java | grep "${DEPLOY_DIR}" | awk '{print $2}' | wc -l`
         fi
+
         if [[ ${COUNT} -gt 0 ]]; then
             break
+        fi
+
+        flag=$[${flag}+1]
+        if [[ ${flag} -gt 30 ]] && [[ ${COUNT} -eq 0 ]]; then
+            echo -e "\033[31;1m应用启动失败\033[0m"
+            exit 33
         fi
     done
 
